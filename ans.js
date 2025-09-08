@@ -73,7 +73,6 @@ function solvePolynomial(filePath) {
       points.push([x, y]);
     }
   }
-
   points.sort((a, b) => {
     const diff = a[0] - b[0];
     if (diff < 0n) return -1;
