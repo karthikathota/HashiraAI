@@ -1,11 +1,40 @@
 const fs = require("fs");
 
 function decodeValue(valueStr, base) {
-  return BigInt(parseInt(valueStr, base));
+  if (base === 10) {
+    return BigInt(valueStr);
+  }
+
+  let result = 0n;
+  const baseBig = BigInt(base);
+
+  for (let i = 0; i < valueStr.length; i++) {
+    const digit = valueStr[i];
+    let digitValue;
+
+    if (digit >= "0" && digit <= "9") {
+      digitValue = BigInt(digit.charCodeAt(0) - "0".charCodeAt(0));
+    } else if (digit >= "A" && digit <= "Z") {
+      digitValue = BigInt(digit.charCodeAt(0) - "A".charCodeAt(0) + 10);
+    } else if (digit >= "a" && digit <= "z") {
+      digitValue = BigInt(digit.charCodeAt(0) - "a".charCodeAt(0) + 10);
+    } else {
+      digitValue = 0n;
+    }
+
+    if (digitValue >= baseBig) {
+      digitValue = 0n;
+    }
+
+    result = result * baseBig + digitValue;
+  }
+
+  return result;
 }
 
 function lagrangeInterpolation(points, x) {
   let result = 0n;
+  const xBig = BigInt(x);
 
   for (let i = 0; i < points.length; i++) {
     let [xi, yi] = points[i];
@@ -17,7 +46,11 @@ function lagrangeInterpolation(points, x) {
       if (i !== j) {
         let [xj] = points[j];
         xj = BigInt(xj);
-        term = (term * (BigInt(x) - xj)) / (xi - xj);
+
+        const denominator = xi - xj;
+        if (denominator !== 0n) {
+          term = (term * (xBig - xj)) / denominator;
+        }
       }
     }
 
@@ -29,26 +62,27 @@ function lagrangeInterpolation(points, x) {
 
 function solvePolynomial(filePath) {
   const data = JSON.parse(fs.readFileSync(filePath, "utf8"));
-  const n = data.keys.n;
-
-  const roots = Object.keys(data)
-    .filter((k) => k !== "keys")
-    .map((k) => decodeValue(data[k].value, parseInt(data[k].base)));
-
-  if (roots.length !== n) {
-    throw new Error(`Expected ${n} roots, found ${roots.length}`);
-  }
+  const k = data.keys.k;
 
   const points = [];
-  for (let x = 0; x <= n; x++) {
-    let fx = 1n;
-    for (const r of roots) {
-      fx *= BigInt(x) - r;
+  for (const key of Object.keys(data)) {
+    if (key !== "keys" && !isNaN(key)) {
+      const x = BigInt(key);
+      const base = parseInt(data[key].base) || 10;
+      const y = decodeValue(data[key].value || "", base);
+      points.push([x, y]);
     }
-    points.push([x, fx]);
   }
 
-  const c = lagrangeInterpolation(points, 0);
+  points.sort((a, b) => {
+    const diff = a[0] - b[0];
+    if (diff < 0n) return -1;
+    if (diff > 0n) return 1;
+    return 0;
+  });
+
+  const selectedPoints = points.slice(0, k);
+  const c = lagrangeInterpolation(selectedPoints, 0);
 
   return c;
 }

@@ -1,12 +1,16 @@
 # HashiraPlaceemnt
 
-A small Node.js script that reconstructs a polynomial using Lagrange interpolation and prints the constant term `c` for sample inputs in `testcase1.json` and `testcase2.json`.
+A small Node.js script that reconstructs the constant term `c` (the secret) of a polynomial using Lagrange interpolation from at least `k` points. Points are provided in JSON, with y-values encoded in various bases.
 
 ## Project Structure
 
 - `ans.js`: Main script
 - `testcase1.json`, `testcase2.json`: Sample inputs
 - `package.json`: Project metadata
+
+## Requirements
+
+- Node.js 18+ (for built-in `BigInt` support)
 
 ## Setup
 
@@ -20,32 +24,49 @@ npm install
 node ans.js
 ```
 
-This will print output like:
+Expected output format:
 
 ```
 Testcase1 c = <value>
 Testcase2 c = <value>
 ```
 
+## Input format
+
+Each testcase file is a JSON object with:
+
+- `keys.n`: Total number of shares available (not used by the script, informational)
+- `keys.k`: Threshold number of shares required to reconstruct the secret
+- One or more numbered properties (`"1"`, `"2"`, ...). Each numbered key is the x-coordinate of a share. Its value is an object with:
+  - `base`: String representing the numeric base of the encoded y-value (e.g., `"2"`, `"10"`, `"16"`)
+  - `value`: String representing the y-value encoded in the specified base
+
+Example snippet:
+
+```json
+{
+  "keys": { "n": 4, "k": 3 },
+  "1": { "base": "10", "value": "4" },
+  "2": { "base": "2", "value": "111" },
+  "3": { "base": "10", "value": "12" },
+  "6": { "base": "4", "value": "213" }
+}
+```
+
 ## How it works (ans.js)
 
-- **Input format**: Each `testcase*.json` contains a `keys.n` field and multiple entries with `{ base, value }`. Each entry represents a root of a monic polynomial, encoded as a string in the specified base.
+- Parses the JSON file and reads `k = data.keys.k`.
+- Decodes each point `(x, y)` where:
+  - `x` is the numeric value of the property name (e.g., `"1"`, `"2"`, `"6"`).
+  - `y` is obtained by decoding the string `value` from the given `base` into a `BigInt`.
+- Sorts all available points by `x` and selects the first `k` points.
+- Uses Lagrange interpolation over the integers (with `BigInt`) to evaluate the unique degree `< k` polynomial at `x = 0` and returns that value as `c`.
+- Logs the result for both `testcase1.json` and `testcase2.json`.
 
-- **`decodeValue(valueStr, base)`**: Converts each encoded root from its base into a JavaScript `BigInt`.
+## Notes and assumptions
 
-- **`lagrangeInterpolation(points, x)`**: Evaluates, in `BigInt` arithmetic, the value at `x` of the unique polynomial that passes through the provided `points` using Lagrange basis polynomials. For each point `(xi, yi)`, it accumulates `yi * Π_{j≠i} (x - xj) / (xi - xj)` using exact `BigInt` division (works because the constructed points ensure divisibility).
-
-- **`solvePolynomial(filePath)`**:
-
-  - Reads JSON and extracts `n = data.keys.n`.
-  - Decodes all roots with `decodeValue`. Validates that the number of decoded roots equals `n`.
-  - Builds sample points for the polynomial `f(x) = Π_i (x - r_i)` at integer `x = 0..n`. Each `f(x)` is computed purely with `BigInt`.
-  - Uses `lagrangeInterpolation(points, 0)` to evaluate the reconstructed polynomial at `x = 0`. For a monic polynomial with the given roots, this value is the constant term `c = f(0) = Π_i (0 - r_i)`.
-  - Returns that constant term `c` as a `BigInt`.
-
-- **Output**: The script logs the constant term for both `testcase1.json` and `testcase2.json`.
-
-- **Notes and assumptions**:
-  - Arithmetic uses `BigInt` throughout to avoid overflow and preserve exactness.
-  - The sample `points` include `n+1` distinct `x` values, which is sufficient to interpolate a degree-`n` polynomial.
-  - The inputs are assumed to be valid and to represent distinct roots (so denominators `(xi - xj)` are non-zero).
+- Arithmetic uses `BigInt` throughout for exactness. No modular arithmetic is performed.
+- The script assumes all selected points are valid for interpolation (distinct `x` values; denominators `(xi - xj) ≠ 0`).
+- Division steps in interpolation are expected to be exact for the given datasets.
+- If more than `k` points are present, only the smallest `k` by `x` are used.
+- Only `keys.k` is used for computation; `keys.n` is informational.
